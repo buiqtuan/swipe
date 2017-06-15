@@ -1,11 +1,16 @@
 import React from 'react';
-import { View, Animated, PanResponder, Dimensions } from 'react-native';
+import { View, Animated, PanResponder, Dimensions, LayoutAnimation, UIManager } from 'react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = 0.45*SCREEN_WIDTH;
 const SWIPE_OUT_DURATION = 250;
 
 class Deck extends React.Component {
+    static defaultProps = {
+        onSwipeRight: () => {},
+        onSwipeLeft: () => {}
+    }
+
     constructor(props) {
         super(props);
 
@@ -27,7 +32,18 @@ class Deck extends React.Component {
             }
         });
 
-        this.state = { panRes, position };
+        this.state = { panRes, position, index: 0 };
+    }
+
+    componentWillUpdate() {
+        UIManager.setLayoutAnimationEnabledExperimental && UIManager.setLayoutAnimationEnabledExperimental(true); // handling animation on android, if this function exist, then call it with true
+        LayoutAnimation.spring();
+    }
+
+    componentWillReceiveProps(nextProps) {
+        if (nextProps.data !== this.props.data) {
+            this.setState({ index: 0 });
+        }
     }
 
     forceSwipe(direction) {
@@ -39,13 +55,17 @@ class Deck extends React.Component {
     }
 
     onSwipeComplete(direction) {
-        const { onSwipeLeft, onSwipeRight } = this.props;
-        direction === 'right' ? onSwipeRight() : onSwipeLeft();
+        const { onSwipeLeft, onSwipeRight, data } = this.props;
+        const item = data[this.state.index];
+
+        direction === 'right' ? onSwipeRight(item) : onSwipeLeft(item);
+        this.state.position.setValue({ x: 0, y: 0 });
+        this.setState({ index: this.state.index + 1 });
     }
 
     resetPosition() {
-        Animated.spring(this.state.position, {
-            toValue: { x: 0, y:0 }
+        Animated.decay(this.state.position, {
+            toValue: { x: 0, y: 0 }
         }).start();
     }
 
@@ -63,21 +83,35 @@ class Deck extends React.Component {
     }
 
     renderCard() {
-        return this.props.data.map((item, index) => {
-            if (index === 0) {
+        if (this.state.index >= this.props.data.length) {
+            return this.props.renderNoMoreCards();
+        }
+
+        return this.props.data.map((item, i) => {
+            if (i < this.state.index) {
+                return null;
+            }
+            if (i === this.state.index) {
                 return (
                     <Animated.View
                         key={item.id}
                         {...this.state.panRes.panHandlers}
-                        style={this.getCardStyle()}
+                        style={[this.getCardStyle(),styles.cardStyle]}
                     >
                         {this.props.renderCard(item)}
                     </Animated.View>
                 );
             }
 
-            return this.props.renderCard(item);
-        });
+            return (
+                <Animated.View 
+                    style={[styles.cardStyle, { top: 10 * (i - this.state.index) }]} 
+                    key={item.id}
+                >
+                    {this.props.renderCard(item)}
+                </Animated.View>
+            );
+        }).reverse();
     }
 
     render() {
@@ -88,5 +122,13 @@ class Deck extends React.Component {
         );
     }
 }
+
+const styles = {
+    cardStyle: {
+        position: 'absolute',
+        width: SCREEN_WIDTH,
+        top: 10
+    }
+};
 
 export default Deck;
